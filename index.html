@@ -77,8 +77,19 @@
             iframe.style.height = `${ch}px`
           }
         }
+        // window.innerWidth/innerHeight can read 0 during this synchronous
+        // initial script run, before the page's own layout has settled —
+        // confirmed live: the first resize() call silently no-oped on its
+        // cw===0/ch===0 guard, and since a webview's guest viewport is
+        // already at its final size from creation, no later 'resize' event
+        // ever fired to correct it, leaving the iframe at its unstyled
+        // default size. Re-running on 'load' (and once more via rAF, for a
+        // fully offscreen/headless window where even 'load' can beat
+        // layout) covers that gap.
         resize()
         window.addEventListener('resize', resize)
+        window.addEventListener('load', resize)
+        requestAnimationFrame(resize)
       }
     </script>
   </body>
