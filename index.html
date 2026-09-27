@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>MiniDisplay YouTube embed relay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // Static passthrough: takes ?v=<11-char YouTube video id> and embeds
+      // it chromeless/autoplay/looped/muted. Exists only because YouTube's
+      // embed player rejects file://-origin and localhost-origin parents
+      // outright, regardless of Referer/origin header spoofing — it needs
+      // the actual top-level navigation to be a real public https origin.
+      // No analytics, no server, no state; this page reads nothing but the
+      // query string and writes nothing anywhere.
+      const params = new URLSearchParams(location.search)
+      const videoId = params.get('v')
+      const valid = videoId && /^[\w-]{11}$/.test(videoId)
+      if (valid) {
+        const embed = new URLSearchParams({
+          autoplay: '1',
+          mute: '1',
+          loop: '1',
+          playlist: videoId,
+          controls: '0',
+          modestbranding: '1',
+          rel: '0',
+          iv_load_policy: '3',
+          playsinline: '1',
+          origin: location.origin
+        })
+        const iframe = document.createElement('iframe')
+        iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?${embed.toString()}`
+        iframe.allow = 'autoplay; encrypted-media'
+        document.body.appendChild(iframe)
+      } else {
+        document.body.textContent = 'Missing or invalid ?v= video id'
+        document.body.style.color = '#888'
+        document.body.style.font = '14px sans-serif'
+        document.body.style.padding = '16px'
+      }
+    </script>
+  </body>
+</html>
