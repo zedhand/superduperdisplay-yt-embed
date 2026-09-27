@@ -40,6 +40,11 @@
       const params = new URLSearchParams(location.search)
       const videoId = params.get('v')
       const valid = videoId && /^[\w-]{11}$/.test(videoId)
+      // 0-100, matches the YouTube IFrame API's own volume scale. Defaults
+      // to 0 (muted) — this is meant as an ambient/background display, not
+      // a sound source, unless the person configuring it explicitly turns
+      // it up.
+      const initialVolume = Math.max(0, Math.min(100, parseInt(params.get('volume') || '0', 10) || 0))
 
       if (!valid) {
         document.body.textContent = 'Missing or invalid ?v= video id'
@@ -49,7 +54,7 @@
       } else {
         const embed = new URLSearchParams({
           autoplay: '1',
-          mute: '1',
+          mute: initialVolume > 0 ? '0' : '1',
           loop: '1',
           playlist: videoId,
           controls: '0',
@@ -57,12 +62,48 @@
           rel: '0',
           iv_load_policy: '3',
           playsinline: '1',
+          enablejsapi: '1',
           origin: location.origin
         })
         const iframe = document.createElement('iframe')
         iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?${embed.toString()}`
         iframe.allow = 'autoplay; encrypted-media'
         document.body.appendChild(iframe)
+
+        // Live volume control via the YouTube IFrame Player's postMessage
+        // protocol directly (not the wrapped youtube.com/iframe_api JS
+        // library — that's unnecessary weight for two commands). The host
+        // app (YoutubeZone.tsx) calls window.__setVolume(0-100) through
+        // webview.executeJavaScript() whenever its volume control changes,
+        // so the video never has to reload to change volume. Commands sent
+        // before the player posts its own 'onReady' event are silently
+        // dropped by YouTube's player, so queue at most one pending value
+        // and flush it once ready.
+        let playerReady = false
+        let pendingVolume = null
+        function sendCommand(func, args) {
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: args || [] }), '*')
+        }
+        function applyVolume(vol) {
+          sendCommand(vol > 0 ? 'unMute' : 'mute')
+          sendCommand('setVolume', [vol])
+        }
+        window.__setVolume = (vol) => {
+          if (playerReady) applyVolume(vol)
+          else pendingVolume = vol
+        }
+        window.addEventListener('message', (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            if (data.event === 'onReady') {
+              playerReady = true
+              if (pendingVolume != null) applyVolume(pendingVolume)
+            }
+          } catch {}
+        })
+        iframe.addEventListener('load', () => {
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*')
+        })
 
         const resize = () => {
           const cw = window.innerWidth
